@@ -1,14 +1,13 @@
 package rishabh;
 
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public class CustomThreadPoolExecutor {
+public final class CustomThreadPoolExecutor {
     public BlockingDeque<Runnable> workerQueue;
     Thread[] workerThreads;
     int poolSize;
-
-    private volatile boolean isInterrupted;
+    private final AtomicBoolean isInterrupted = new AtomicBoolean(false);
 
     public CustomThreadPoolExecutor(int poolSize) {
         this.poolSize = poolSize;
@@ -20,45 +19,35 @@ public class CustomThreadPoolExecutor {
     public void startWorkerThreads() {
 
         for (int i = 0; i < poolSize; i++) {
-            workerThreads[i] = new WorkerThread("Thread " + i);
+            workerThreads[i] = new WorkerThread("Thread " + i, isInterrupted, workerQueue);
             workerThreads[i].start();
         }
     }
 
     public void shutDownPool() {
-        isInterrupted = true;
+        isInterrupted.set(true);
     }
 
     public void submit(Runnable runnableTask) throws InterruptedException {
-        workerQueue.put(runnableTask);
+        RunnableFuture<?> runnableFuture = new FutureTask<>(runnableTask, null);
+        workerQueue.put(runnableFuture);
     }
 
-    class WorkerThread extends Thread {
-        public WorkerThread(String name) {
-            super(name);
-        }
-
-        public void run() {
-            System.out.println(Thread.currentThread().getName() + " started");
-            while (!isInterrupted) {
-                try {
-                    Runnable runnableTask = workerQueue.take();
-                    runnableTask.run();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-            System.out.println(Thread.currentThread().getName() + " stopped");
-        }
+    public <T> Future<T> submit(Callable<T> callableTask) throws InterruptedException {
+        RunnableFuture<T> callableFuture = new FutureTask<>(callableTask);
+        workerQueue.put(callableFuture);
+        return callableFuture;
     }
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws InterruptedException, ExecutionException, TimeoutException {
         CustomThreadPoolExecutor executor = new CustomThreadPoolExecutor(5);
 
         executor.submit(() -> System.out.println("First Task"));
-        executor.submit(() -> System.out.println("Second Task"));
+        Future<Integer> future = executor.submit(() -> 10);
+        System.out.println(future.get(5, TimeUnit.MILLISECONDS));
 
         executor.shutDownPool();
+
     }
 }
 
